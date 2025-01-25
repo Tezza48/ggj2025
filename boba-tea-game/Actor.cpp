@@ -6,7 +6,7 @@
 
 #include <rlgl.h>
 
-Actor::Actor() {
+Actor::Actor() : pos(), scale(1.0f) {
 	parent = nullptr;
 }
 
@@ -19,9 +19,11 @@ void Actor::Tick(World* world) {
 void Actor::PreDraw3D()
 {
 	rlPushMatrix();
+	rlScalef(scale, scale, scale);
+	rlRotatef(rotation.x, 1.0f, 0.0f, 0.0f);
+	rlRotatef(rotation.y, 0.0f, 1.0f, 0.0f);
+	rlRotatef(rotation.z, 0.0f, 0.0f, 1.0f);
 	rlTranslatef(pos.x, pos.y, pos.z);
-
-	//globalPos = Vector3Transform(Vector3Zero(), rlGetMatrixTransform());
 }
 
 void Actor::Draw3D(World* world)

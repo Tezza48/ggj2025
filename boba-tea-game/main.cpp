@@ -6,27 +6,40 @@
 #include <cmath>
 #include <string>
 #include <iostream>
-//#define RLGL_IMPLEMENTATION
-//#include <rlgl.h>
 
-class Player : public Actor {
+
+class ModelActor : public Actor {
 public:
-	int size = 0;
 
-	float sizeScale = 0.02f;
+	Model model;
 
-	Player() : Actor() {
-	}
-
-	void Tick(World* world) override {
-		Actor::Tick(world);
+	ModelActor(const char* filename) : Actor() {
+		model = LoadModel(filename);
 	}
 
 	void Draw3D(World* world) override {
 		Actor::Draw3D(world);
-		float radius = 0.1f + size * sizeScale;
-		//Vector3 drawPos = { pos.x, pos.y + radius, pos.z };
-		DrawSphere(Vector3{ 0.0f, radius, 0.0f }, radius, BLACK);
+		DrawModel(model, Vector3Zero(), 1.0f, WHITE);
+	}
+};
+
+
+class Player : public Actor {
+public:
+	ModelActor ballModel;
+	int size = 0;
+
+	float sizeScale = 0.02f;
+
+	Player() : Actor(), ballModel("assets/ball.gltf") {
+		AddChild(&ballModel);
+	}
+
+	void Tick(World* world) override {
+		Actor::Tick(world);
+
+		ballModel.pos.y = 0.5f;
+		ballModel.scale = 0.1f + size * sizeScale;
 	}
 };
 
@@ -49,7 +62,7 @@ public:
 enum class LevelCell {
 	FLOOR,
 	GROWSTUFF,
-	WALL,
+	SPIKE,
 	GOAL,
 };
 
@@ -61,6 +74,8 @@ public:
 
 	int levelWidth = 5;
 	std::vector<LevelCell> level;
+
+	std::vector<ModelActor*> props;
 
 	TextActor youWinText;
 
@@ -77,12 +92,32 @@ public:
 		youWinText.anchor = 0.5;
 
 		level = std::vector({
-			LevelCell::WALL, LevelCell::WALL, LevelCell::WALL, LevelCell::GROWSTUFF, LevelCell::GROWSTUFF,
+			LevelCell::SPIKE, LevelCell::SPIKE, LevelCell::SPIKE, LevelCell::GROWSTUFF, LevelCell::GROWSTUFF,
 			LevelCell::GROWSTUFF, LevelCell::GROWSTUFF, LevelCell::GROWSTUFF, LevelCell::GROWSTUFF, LevelCell::GROWSTUFF,
 			LevelCell::GROWSTUFF, LevelCell::GROWSTUFF, LevelCell::GOAL, LevelCell::GROWSTUFF, LevelCell::GROWSTUFF,
 			LevelCell::GROWSTUFF, LevelCell::GROWSTUFF, LevelCell::GROWSTUFF, LevelCell::GROWSTUFF, LevelCell::GROWSTUFF,
-			LevelCell::GROWSTUFF, LevelCell::GROWSTUFF, LevelCell::WALL, LevelCell::WALL, LevelCell::GROWSTUFF,
-			});
+			LevelCell::GROWSTUFF, LevelCell::GROWSTUFF, LevelCell::SPIKE, LevelCell::SPIKE, LevelCell::GROWSTUFF,
+		});
+
+		player.pos = { 0.0f, 0.0f, 1.0f };
+
+		for (int z = 0; z < levelWidth; z++) {
+			for (int x = 0; x < levelWidth; x++) {
+				switch (level[z * levelWidth + x]) {
+				case LevelCell::SPIKE:
+					auto *modelActor = props.emplace_back(new ModelActor("assets/spikes.gltf"));
+					AddChild(modelActor);
+					modelActor->pos = { (float)x, 0.0f, (float)z };
+					break;
+				}
+			}
+		}
+	}
+
+	virtual ~Level() {
+		for (const auto* prop : props) {
+			delete prop;
+		}
 	}
 
 	void Tick(World* world) override {
@@ -130,8 +165,8 @@ public:
 						player.size += 2;
 						cell = LevelCell::FLOOR;
 						break;
-					case LevelCell::WALL:
-						canMoveThere = false;
+					case LevelCell::SPIKE:
+						std::cout << "Player has gone into spikes, game over" << std::endl;
 						break;
 					case LevelCell::GOAL:
 						if (player.size >= goalMin && player.size < goalMax) {
@@ -202,6 +237,8 @@ int main(void)
 	Level level = Level();
 	root.AddChild(&level);
 
+	//Model plateModel = LoadModel("assets/testPlate.gltf");
+
 	while (!WindowShouldClose())
 	{
 		world.root->Tick(&world);
@@ -211,12 +248,14 @@ int main(void)
 
 		BeginMode3D(cam);
 
+		//DrawModel(plateModel, Vector3Zero(), 10.0f, WHITE);
 		//cam.position = Vector3Su level.player.globalPos
 
 		world.root->Draw3D(&world);
 		DrawGrid(10, 1.0);
 
 		EndMode3D();
+
 
 		world.root->Draw2D(&world);
 

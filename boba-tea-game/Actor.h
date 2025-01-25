@@ -11,6 +11,9 @@ public:
     std::vector<Actor*> children;
 
     Vector3 pos;
+    Vector3 rotation;
+    float scale;
+
     bool visible = true;
 
     //Vector3 globalPos;
