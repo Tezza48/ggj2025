@@ -11,9 +11,16 @@ public:
     std::vector<Actor*> children;
 
     Vector3 pos;
+    bool visible = true;
+
+    //Vector3 globalPos;
 
     virtual void Tick(World* world);
-    virtual void Draw(World* world);
+    void PreDraw3D();
+    virtual void Draw3D(World* world);
+    void PostDraw3D();
+
+    virtual void Draw2D(World* world);
 
     Actor();
     ~Actor();
