@@ -2,6 +2,7 @@
 #include "World.h"
 #include <algorithm>
 #include <cassert>
+#include <raymath.h>
 
 Actor::Actor() {
     parent = nullptr;
@@ -10,6 +11,13 @@ Actor::Actor() {
 void Actor::Tick(World* world) {
     for (auto* child : children) {
         child->Tick(world);
+    }
+}
+
+void Actor::Draw(World* world)
+{
+    for (auto* child : children) {
+        child->Draw(world);
     }
 }
 

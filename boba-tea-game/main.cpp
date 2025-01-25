@@ -1,86 +1,181 @@
 #include <raylib.h>
 #include "Actor.h"
 #include "World.h"
+#include <raymath.h>
+#include <vector>
+#include <cmath>
+#include <string>
+#include <iostream>
+//#define RLGL_IMPLEMENTATION
+//#include <rlgl.h>
 
 class Player : public Actor {
 public:
-    Vector3 pos;
+	int size = 0;
 
-    Player() : Actor(), pos() {
-    }
+	float sizeScale = 0.02f;
 
-    void Tick(World* world) override {
-        Actor::Tick(world);
+	Player() : Actor() {
+	}
 
-        float moveSpeed = 10;
-        if (IsKeyDown(KEY_W)) {
-            pos.z -= GetFrameTime() * moveSpeed;
-        }
+	void Tick(World* world) override {
+		Actor::Tick(world);
 
-        if (IsKeyDown(KEY_S)) {
-            pos.z += GetFrameTime() * moveSpeed;
-        }
+	}
 
-        if (IsKeyDown(KEY_A)) {
-            pos.x -= GetFrameTime() * moveSpeed;
-        }
-
-        if (IsKeyDown(KEY_D)) {
-            pos.x += GetFrameTime() * moveSpeed;
-        }
-
-        DrawSphere(pos, 1.0f, BLACK);
-    }
+	void Draw(World* world) override {
+		Actor::Draw(world);
+		float radius = 0.2f + size * sizeScale;
+		Vector3 drawPos = { pos.x, pos.y + radius, pos.z };
+		DrawSphere(drawPos, radius, BLACK);
+	}
 };
 
-class LevelGrid : public Actor {
+enum class LevelCell {
+	FLOOR,
+	GROWSTUFF,
+};
+
+class Level : public Actor {
 public:
-    Vector3 pos;
-    int width;
+	Player player;
+	int playerCellx, playerCellY;
 
-    LevelGrid(int width) : Actor(), width(width), pos() {
-    }
+	int levelWidth = 5;
+	std::vector<LevelCell> level;
 
-    void Tick(World* world) override {
-        DrawGrid(10, 1.0);
-    }
+	Level() : Actor() {
+		AddChild(&player);
+
+		level = std::vector({
+			LevelCell::GROWSTUFF, LevelCell::GROWSTUFF, LevelCell::GROWSTUFF, LevelCell::GROWSTUFF, LevelCell::GROWSTUFF,
+			LevelCell::GROWSTUFF, LevelCell::GROWSTUFF, LevelCell::GROWSTUFF, LevelCell::GROWSTUFF, LevelCell::GROWSTUFF,
+			LevelCell::GROWSTUFF, LevelCell::GROWSTUFF, LevelCell::GROWSTUFF, LevelCell::GROWSTUFF, LevelCell::GROWSTUFF,
+			LevelCell::GROWSTUFF, LevelCell::GROWSTUFF, LevelCell::GROWSTUFF, LevelCell::GROWSTUFF, LevelCell::GROWSTUFF,
+			LevelCell::GROWSTUFF, LevelCell::GROWSTUFF, LevelCell::GROWSTUFF, LevelCell::GROWSTUFF, LevelCell::GROWSTUFF,
+			});
+	}
+
+	void Tick(World* world) override {
+		Actor::Tick(world);
+
+		Vector3 playerMoveDir = { 0 };
+		if (IsKeyReleased(KEY_W)) {
+			playerMoveDir.z--;
+		}
+
+		if (IsKeyReleased(KEY_S)) {
+			playerMoveDir.z++;
+		}
+
+		if (IsKeyReleased(KEY_A)) {
+			playerMoveDir.x--;
+		}
+
+		if (IsKeyReleased(KEY_D)) {
+			playerMoveDir.x++;
+		}
+
+		if (Vector3LengthSqr(playerMoveDir) > 0.0f) {
+			int oldX = (int)floor(player.pos.x);
+			int oldZ = (int)floor(player.pos.z);
+			player.pos = Vector3Clamp(
+				Vector3Add(player.pos, playerMoveDir),
+				Vector3{ 0 },
+				Vector3{ (float)levelWidth - 1, 0.0f, (float)levelWidth - 1 }
+			);
+			int x = (int)floor(player.pos.x);
+			int z = (int)floor(player.pos.z);
+
+			if (x != oldX || z != oldZ) {
+
+				std::cout << "Pos: " << x << "," << z << std::endl;
+
+				LevelCell& cell = level[z * levelWidth + x];
+				switch (cell) {
+				case LevelCell::FLOOR:
+					player.size = player.size > 0 ? player.size - 1 : player.size;
+					break;
+				case LevelCell::GROWSTUFF:
+					player.size += 2;
+					cell = LevelCell::FLOOR;
+					break;
+				}
+
+			}
+		}
+	}
+
+	void Draw(World* world) override {
+		Actor::Draw(world);
+
+		for (int z = 0; z < levelWidth; z++) {
+			for (int x = 0; x < levelWidth; x++) {
+				switch (level[z * levelWidth + x]) {
+				case LevelCell::FLOOR:
+					DrawPlane(
+						Vector3Add(pos, Vector3{ (float)x, 0.0f, (float)z }),
+						Vector2{ 1.0f, 1.0f },
+						GRAY
+					);
+					break;
+				case LevelCell::GROWSTUFF:
+					DrawPlane(
+						Vector3Add(pos, Vector3{ (float)x, 0.1f, (float)z }),
+						Vector2{ 1.0f, 1.0f },
+						DARKBROWN
+					);
+					break;
+				}
+			}
+		}
+	}
 };
 
 int main(void)
 {
-    InitWindow(1280, 720, "GGJ 2025 Boba Tea Roller");
+	InitWindow(1280, 720, "GGJ 2025 Boba Tea Roller");
 
-    Actor root = {};
-    World world = {
-        &root
-    };
+	Actor root = {};
+	World world = {
+		&root
+	};
 
-    Camera cam;
-    cam.projection = CAMERA_PERSPECTIVE;
-    cam.position = { 0.0f, 10.0f, 1.0f };
-    cam.fovy = 60.0f;
-    cam.up = { 0.0f, 1.0f, 0.0f };
-    cam.target = {};
+	Camera cam;
+	cam.projection = CAMERA_PERSPECTIVE;
+	cam.position = { 2.5f, 5.0f, 7.0f };
+	cam.fovy = 60.0f;
+	cam.up = { 0.0f, 1.0f, 0.0f };
+	cam.target = { 2.5f, 0.0f, 2.5f };
 
-    Player player = Player();
-    root.AddChild(&player);
+	Level level = Level();
+	root.AddChild(&level);
 
-    LevelGrid grid = LevelGrid(5);
-    root.AddChild(&grid);
+	while (!WindowShouldClose())
+	{
+		world.root->Tick(&world);
 
-    while (!WindowShouldClose())
-    {
-        BeginDrawing();
-        ClearBackground(RAYWHITE);
-        
-        BeginMode3D(cam);
+		BeginDrawing();
+		ClearBackground(RAYWHITE);
 
-        world.root->Tick(&world);
-        EndMode3D();
-        EndDrawing();
-    }
+		BeginMode3D(cam);
 
-    CloseWindow();
+		world.root->Draw(&world);
+		DrawGrid(10, 1.0);
 
-    return 0;
+		EndMode3D();
+
+		std::string playerInfo = "Player Pos: "
+			+ std::to_string(level.player.pos.x)
+			+ ","
+			+ std::to_string(level.player.pos.y)
+			+ ","
+			+ std::to_string(level.player.pos.z);
+		DrawText(playerInfo.c_str(), 10, 10, 24, BLACK);
+		EndDrawing();
+	}
+
+	CloseWindow();
+
+	return 0;
 }
