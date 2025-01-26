@@ -7,6 +7,7 @@
 #include <string>
 #include <iostream>
 #include <sstream>
+#include <array>
 
 class Timer {
 public:
@@ -15,8 +16,9 @@ public:
 
 	}
 
-	Timer() : duration(0) {
-
+	Timer() {
+		time = 0;
+		duration = 0;
 	}
 
 	void Update() {
@@ -35,21 +37,21 @@ public:
 	float ProgressEaseInOutBack() {
 		float x = Progress();
 
-		float c1 = 1.70158;
-		float c2 = c1 * 1.525;
+		float c1 = 1.70158f;
+		float c2 = c1 * 1.525f;
 
-		return x < 0.5
-			? (powf(2 * x, 2) * ((c2 + 1) * 2 * x - c2)) / 2
-			: (powf(2 * x - 2, 2) * ((c2 + 1) * (x * 2 - 2) + c2) + 2) / 2;
+		return x < 0.5f
+			? (powf(2.0f * x, 2.0f) * ((c2 + 1.0f) * 2.0f * x - c2)) / 2.0f
+			: (powf(2.0f * x - 2.0f, 2.0f) * ((c2 + 1.0f) * (x * 2.0f - 2.0f) + c2) + 2.0f) / 2.0f;
 	}
 
 	float ProgressEaseOutBack() {
 		float x = Progress();
 
-		float c1 = 1.70158;
-		float c3 = c1 + 1;
+		float c1 = 1.70158f;
+		float c3 = c1 + 1.0f;
 
-		return 1 + c3 * powf(x - 1, 3) + c1 * powf(x - 1, 2);
+		return 1.0f + c3 * powf(x - 1.0f, 3.0f) + c1 * powf(x - 1.0f, 2.0f);
 	}
 };
 
@@ -73,6 +75,7 @@ class Player : public Actor {
 public:
 	ModelActor ballModel;
 	int size = 0;
+	int moveStartSize = size;
 
 	float sizeScale = 0.05f;
 
@@ -80,7 +83,6 @@ public:
 	Vector3 moveStartPos = Vector3Zero();
 	Vector3 moveEndPos = Vector3Zero();
 
-	int moveStartSize;
 
 	bool canMove = true;
 
@@ -101,7 +103,7 @@ public:
 		moveStartSize = size;
 		size = newSize;
 
-		moveTimer = Timer(0.2);
+		moveTimer = Timer(0.2f);
 	}
 
 	void Tick(World* world) override {
@@ -110,14 +112,12 @@ public:
 		moveTimer.Update();
 		canMove = moveTimer.isComplete();
 
-
-		std::cout << "Running the move tween logic" << std::endl;
 		pos = Vector3Lerp(moveStartPos, moveEndPos, moveTimer.ProgressEaseOutBack());
 		ballModel.scale = 0.2f + Lerp((float)moveStartSize, (float)size, moveTimer.ProgressEaseInOutBack()) * sizeScale;
 		ballModel.pos.y = 0.5f;
 	}
 
-private: 
+private:
 	void UpdateBallScale() {
 
 	}
@@ -139,11 +139,17 @@ public:
 	}
 };
 
-enum LevelCell {
+enum Cell {
 	FLOOR,
 	GROW,
 	SPIKE,
 	GOAL,
+};
+
+enum class LevelState {
+	PLAY,
+	LOSS,
+	WIN
 };
 
 class Level : public Actor {
@@ -154,18 +160,37 @@ public:
 	int width;
 	int height;
 
-	std::vector<LevelCell> level;
+	Vector2 startPos;
+
+	const std::vector<Cell> originalLevel;
+	std::vector<Cell> level;
 
 	std::vector<ModelActor*> props;
 
 	TextActor youWinText;
 	TextActor youLoseText;
 
-	bool levelComplete = false;
+	LevelState state = LevelState::PLAY;
 
-	bool levelFailed = false;
+	Timer levelChangeTimer;
 
-	Level(int width, int height, int goal, Vector2 startPos, std::vector<LevelCell> data) : Actor(), goal(goal), width(width), height(height), level(data) {
+	Level(
+		int width,
+		int height,
+		int goal,
+		Vector2 startPos,
+		const std::vector<Cell> data
+	) : Actor(),
+		goal(goal),
+		width(width),
+		height(height),
+		startPos(startPos) ,
+		originalLevel(data)
+	{
+		for (int i = 0; i < originalLevel.size(); i++) {
+			level.push_back(originalLevel[i]);
+		}
+
 		AddChild(&player);
 
 		AddChild(&youWinText);
@@ -187,7 +212,7 @@ public:
 			for (int x = 0; x < width; x++) {
 				auto& cell = level[z * width + x];
 
-				if (cell == LevelCell::GOAL) {
+				if (cell == Cell::GOAL) {
 					auto* floorModel = props.emplace_back(new ModelActor("assets/floorGoal.gltf"));
 					AddChild(floorModel);
 					floorModel->pos = { (float)x, 0.0f, (float)z };
@@ -198,7 +223,7 @@ public:
 					floorModel->pos = { (float)x, 0.0f, (float)z };
 				}
 				switch (cell) {
-				case LevelCell::SPIKE:
+				case Cell::SPIKE:
 					auto* modelActor = props.emplace_back(new ModelActor("assets/spikes.gltf"));
 					AddChild(modelActor);
 					modelActor->pos = { (float)x, 0.0f, (float)z };
@@ -206,6 +231,16 @@ public:
 				}
 			}
 		}
+	}
+
+	Level(const Level& other) :
+		Level(
+			other.width,
+			other.height,
+			other.goal,
+			other.startPos,
+			other.originalLevel
+		) {
 	}
 
 	virtual ~Level() {
@@ -217,22 +252,18 @@ public:
 	void Tick(World* world) override {
 		Actor::Tick(world);
 
-		world->cam->target = Vector3Add(pos, { width / 2.0f, 0.0f, height / 2.0f });
+		levelChangeTimer.Update();
+
+		world->cam->target = Vector3Add(pos, { width / 2.0f, 0.0f, 1.0f + height / 2.0f });
 		world->cam->target.x -= 0.5f;
 		world->cam->target.z -= 0.5f;
-		world->cam->position = Vector3Add(world->cam->target, { 0.0f, 3.0f, 4.0f });
+		world->cam->position = Vector3Add(world->cam->target, { 0.0f, 4.0f, 6.0f });
 
 
-		if (levelComplete) {
-			youWinText.visible = true;
-			player.pos.y -= GetFrameTime();
-			return;
-		}
-		if (levelFailed) {
-			youLoseText.visible = true;
-		}
+		switch (state) {
+		case LevelState::PLAY: {
+			if (!player.canMove) break;
 
-		if (player.canMove) {
 			Vector3 playerMoveDir = { 0 };
 			if (IsKeyReleased(KEY_W)) {
 				playerMoveDir.z--;
@@ -264,24 +295,24 @@ public:
 					bool canMoveThere = true;
 					int newSize = player.size;
 
-					LevelCell& cell = level[z * width + x];
+					Cell& cell = level[z * width + x];
 					switch (cell) {
-					case LevelCell::FLOOR:
+					case Cell::FLOOR:
 						newSize = newSize > 0 ? newSize - 1 : newSize;
 						break;
-					case LevelCell::GROW:
+					case Cell::GROW:
 						newSize += 2;
-						cell = LevelCell::FLOOR;
+						cell = Cell::FLOOR;
 						break;
-					case LevelCell::SPIKE:
+					case Cell::SPIKE:
 						canMoveThere = false;
 						break;
-					case LevelCell::GOAL:
+					case Cell::GOAL:
 						if (newSize >= goal) {
-							levelComplete = true;
+							WinLevel();
 						}
 						else {
-							levelFailed = true;
+							FailLevel();
 						}
 						break;
 					}
@@ -291,11 +322,24 @@ public:
 						player.MoveTo({ (float)x, 0.0f, (float)z }, newSize);
 					}
 
-					if (std::count(level.begin(), level.end(), LevelCell::GROW) == 0 && newSize < goal) {
-						levelFailed = true;
+					if (std::count(level.begin(), level.end(), Cell::GROW) == 0 && newSize < goal) {
+						FailLevel();
 					}
 				}
 			}
+			break;
+		}
+		case LevelState::WIN:
+
+			youWinText.visible = true;
+			player.pos.y -= GetFrameTime();
+			return;
+			break;
+
+		case LevelState::LOSS:
+			youLoseText.visible = true;
+
+			break;
 		}
 	}
 
@@ -305,14 +349,14 @@ public:
 		for (int z = 0; z < height; z++) {
 			for (int x = 0; x < width; x++) {
 				switch (level[z * width + x]) {
-				case LevelCell::GROW:
+				case Cell::GROW:
 					DrawPlane(
 						Vector3Add(pos, Vector3{ (float)x, 0.1f, (float)z }),
 						Vector2{ 1.0f, 1.0f },
 						DARKBROWN
 					);
 					break;
-				case LevelCell::GOAL:
+				case Cell::GOAL:
 					break;
 				}
 			}
@@ -328,6 +372,17 @@ public:
 		int width = MeasureText(text.str().c_str(), fontSize);
 		DrawText(text.str().c_str(), (GetScreenWidth() - width) / 2, 10, fontSize, ORANGE);
 	}
+
+private:
+	void FailLevel() {
+		state = LevelState::LOSS;
+		levelChangeTimer = Timer(1.0);
+	}
+
+	void WinLevel() {
+		state = LevelState::WIN;
+		levelChangeTimer = Timer(1.0);
+	}
 };
 
 int main(void)
@@ -340,7 +395,7 @@ int main(void)
 	Camera cam;
 	cam.projection = CAMERA_PERSPECTIVE;
 	cam.position = { 2.5f, 5.0f, 7.0f };
-	cam.fovy = 60.0f;
+	cam.fovy = 40.0f;
 	cam.up = { 0.0f, 1.0f, 0.0f };
 	cam.target = { 2.5f, 0.0f, 2.5f };
 
@@ -360,7 +415,7 @@ int main(void)
 		1,
 		6,
 		{ 0, 0 },
-		{ LevelCell::FLOOR, LevelCell::GROW, LevelCell::GROW, LevelCell::GROW, LevelCell::GOAL });
+		{ Cell::FLOOR, Cell::GROW, Cell::GROW, Cell::GROW, Cell::GOAL });
 
 	Level complexLevel = Level(
 		5,
@@ -376,12 +431,33 @@ int main(void)
 		}
 	);
 
-	//root.AddChild(&straightLineLevel);
-	root.AddChild(&complexLevel);
+	int currentLevelIndex = 0;
+	std::vector<Level*> levels = { &straightLineLevel, &complexLevel };
+
+	Level* currentLevel = new Level(*levels[currentLevelIndex]);
+
+	root.AddChild(currentLevel);
 
 	while (!WindowShouldClose())
 	{
 		world.root->Tick(&world);
+
+		if (currentLevel->state == LevelState::WIN)
+		std::cout << "Level change timer: " << currentLevel->levelChangeTimer.time << std::endl;
+
+		if (currentLevel->state == LevelState::WIN && currentLevel->levelChangeTimer.isComplete()) {
+			root.RemoveChild(currentLevel);
+			currentLevelIndex = (currentLevelIndex + 1) % levels.size();
+			delete currentLevel;
+			currentLevel = new Level(*levels[currentLevelIndex]);
+			root.AddChild(currentLevel);
+		}
+		else if (currentLevel->state == LevelState::LOSS && currentLevel->levelChangeTimer.isComplete()) {
+			root.RemoveChild(currentLevel);
+			delete currentLevel;
+			currentLevel = new Level(*levels[currentLevelIndex]);
+			root.AddChild(currentLevel);
+		}
 
 		BeginDrawing();
 		ClearBackground(LIGHTGRAY);
