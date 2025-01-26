@@ -289,9 +289,6 @@ public:
 
 				// If the new position is in bounds
 				if (x != oldX || z != oldZ) {
-
-					std::cout << "Pos: " << x << "," << z << std::endl;
-
 					bool canMoveThere = true;
 					int newSize = player.size;
 
@@ -417,6 +414,20 @@ int main(void)
 		{ 0, 0 },
 		{ Cell::FLOOR, Cell::GROW, Cell::GROW, Cell::GROW, Cell::GOAL });
 
+	Level mediumLevel = Level(
+		5,
+		5,
+		21,
+		{ 0.0f, 2.0f },
+		{
+			GROW,	GROW,	GROW,	GROW,	GROW,
+			GROW,	SPIKE,	FLOOR,	SPIKE,	GROW,
+			FLOOR,	FLOOR,	FLOOR,	FLOOR,	GOAL,
+			GROW,	SPIKE,	FLOOR,	SPIKE,	GROW,
+			GROW,	GROW,	GROW,	GROW,	GROW
+		}
+	);
+
 	Level complexLevel = Level(
 		5,
 		5,
@@ -432,7 +443,7 @@ int main(void)
 	);
 
 	int currentLevelIndex = 0;
-	std::vector<Level*> levels = { &straightLineLevel, &complexLevel };
+	std::vector<Level*> levels = { &straightLineLevel, &mediumLevel, &complexLevel };
 
 	Level* currentLevel = new Level(*levels[currentLevelIndex]);
 
@@ -441,9 +452,6 @@ int main(void)
 	while (!WindowShouldClose())
 	{
 		world.root->Tick(&world);
-
-		if (currentLevel->state == LevelState::WIN)
-		std::cout << "Level change timer: " << currentLevel->levelChangeTimer.time << std::endl;
 
 		if (currentLevel->state == LevelState::WIN && currentLevel->levelChangeTimer.isComplete()) {
 			root.RemoveChild(currentLevel);
