@@ -300,7 +300,7 @@ int main(void)
 		world.root->Tick(&world);
 
 		BeginDrawing();
-		ClearBackground(RAYWHITE);
+		ClearBackground(LIGHTGRAY);
 
 		BeginMode3D(cam);
 
