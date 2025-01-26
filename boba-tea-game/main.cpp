@@ -8,6 +8,51 @@
 #include <iostream>
 #include <sstream>
 
+class Timer {
+public:
+	float time, duration;
+	Timer(float duration) : time(0), duration(duration) {
+
+	}
+
+	Timer() : duration(0) {
+
+	}
+
+	void Update() {
+		time += GetFrameTime();
+	}
+
+	float isComplete() {
+		return time > duration;
+	}
+
+	float Progress() {
+		return Clamp(time / duration, 0.0f, 1.0f);
+	}
+
+	// https://easings.net/#easeInOutBack
+	float ProgressEaseInOutBack() {
+		float x = Progress();
+
+		float c1 = 1.70158;
+		float c2 = c1 * 1.525;
+
+		return x < 0.5
+			? (powf(2 * x, 2) * ((c2 + 1) * 2 * x - c2)) / 2
+			: (powf(2 * x - 2, 2) * ((c2 + 1) * (x * 2 - 2) + c2) + 2) / 2;
+	}
+
+	float ProgressEaseOutBack() {
+		float x = Progress();
+
+		float c1 = 1.70158;
+		float c3 = c1 + 1;
+
+		return 1 + c3 * powf(x - 1, 3) + c1 * powf(x - 1, 2);
+	}
+};
+
 class ModelActor : public Actor {
 public:
 
@@ -31,15 +76,50 @@ public:
 
 	float sizeScale = 0.05f;
 
+	Timer moveTimer;
+	Vector3 moveStartPos = Vector3Zero();
+	Vector3 moveEndPos = Vector3Zero();
+
+	int moveStartSize;
+
+	bool canMove = true;
+
 	Player() : Actor(), ballModel("assets/ball.gltf") {
 		AddChild(&ballModel);
+	}
+
+	void SetStartPos(Vector3 position) {
+		pos = position;
+		moveStartPos = position;
+		moveEndPos = position;
+	}
+
+	void MoveTo(Vector3 newPos, int newSize) {
+		moveStartPos = pos;
+		moveEndPos = newPos;
+
+		moveStartSize = size;
+		size = newSize;
+
+		moveTimer = Timer(0.2);
 	}
 
 	void Tick(World* world) override {
 		Actor::Tick(world);
 
+		moveTimer.Update();
+		canMove = moveTimer.isComplete();
+
+
+		std::cout << "Running the move tween logic" << std::endl;
+		pos = Vector3Lerp(moveStartPos, moveEndPos, moveTimer.ProgressEaseOutBack());
+		ballModel.scale = 0.2f + Lerp((float)moveStartSize, (float)size, moveTimer.ProgressEaseInOutBack()) * sizeScale;
 		ballModel.pos.y = 0.5f;
-		ballModel.scale = 0.2f + size * sizeScale;
+	}
+
+private: 
+	void UpdateBallScale() {
+
 	}
 };
 
@@ -101,7 +181,7 @@ public:
 		youLoseText.pos = youWinText.pos;
 		youLoseText.anchor = youWinText.anchor;
 
-		player.pos = { startPos.x, 0.0f, startPos.y};
+		player.SetStartPos({ startPos.x, 0.0f, startPos.y });
 
 		for (int z = 0; z < height; z++) {
 			for (int x = 0; x < width; x++) {
@@ -119,7 +199,7 @@ public:
 				}
 				switch (cell) {
 				case LevelCell::SPIKE:
-					auto *modelActor = props.emplace_back(new ModelActor("assets/spikes.gltf"));
+					auto* modelActor = props.emplace_back(new ModelActor("assets/spikes.gltf"));
 					AddChild(modelActor);
 					modelActor->pos = { (float)x, 0.0f, (float)z };
 					break;
@@ -142,13 +222,17 @@ public:
 		world->cam->target.z -= 0.5f;
 		world->cam->position = Vector3Add(world->cam->target, { 0.0f, 3.0f, 4.0f });
 
+
 		if (levelComplete) {
 			youWinText.visible = true;
 			player.pos.y -= GetFrameTime();
+			return;
 		}
-		else if (levelFailed) {
+		if (levelFailed) {
 			youLoseText.visible = true;
-		} else {
+		}
+
+		if (player.canMove) {
 			Vector3 playerMoveDir = { 0 };
 			if (IsKeyReleased(KEY_W)) {
 				playerMoveDir.z--;
@@ -178,21 +262,22 @@ public:
 					std::cout << "Pos: " << x << "," << z << std::endl;
 
 					bool canMoveThere = true;
+					int newSize = player.size;
 
 					LevelCell& cell = level[z * width + x];
 					switch (cell) {
 					case LevelCell::FLOOR:
-						player.size = player.size > 0 ? player.size - 1 : player.size;
+						newSize = newSize > 0 ? newSize - 1 : newSize;
 						break;
 					case LevelCell::GROW:
-						player.size += 2;
+						newSize += 2;
 						cell = LevelCell::FLOOR;
 						break;
 					case LevelCell::SPIKE:
-						std::cout << "Player has gone into spikes, game over" << std::endl;
+						canMoveThere = false;
 						break;
 					case LevelCell::GOAL:
-						if (player.size >= goal) {
+						if (newSize >= goal) {
 							levelComplete = true;
 						}
 						else {
@@ -202,12 +287,11 @@ public:
 					}
 
 					if (canMoveThere) {
-						player.pos.x = x;
-						player.pos.y = 0.0f;
-						player.pos.z = z;
+
+						player.MoveTo({ (float)x, 0.0f, (float)z }, newSize);
 					}
 
-					if (std::count(level.begin(), level.end(), LevelCell::GROW) == 0 && player.size < goal) {
+					if (std::count(level.begin(), level.end(), LevelCell::GROW) == 0 && newSize < goal) {
 						levelFailed = true;
 					}
 				}
@@ -272,11 +356,11 @@ int main(void)
 
 
 	Level straightLineLevel = Level(
-		5, 
-		1, 
-		6, 
-		{0, 0},
-		{ LevelCell::FLOOR, LevelCell::GROW, LevelCell::GROW, LevelCell::GROW, LevelCell::GOAL});
+		5,
+		1,
+		6,
+		{ 0, 0 },
+		{ LevelCell::FLOOR, LevelCell::GROW, LevelCell::GROW, LevelCell::GROW, LevelCell::GOAL });
 
 	Level complexLevel = Level(
 		5,

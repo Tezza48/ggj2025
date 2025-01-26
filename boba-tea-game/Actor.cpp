@@ -6,7 +6,7 @@
 
 #include <rlgl.h>
 
-Actor::Actor() : pos(), scale(1.0f) {
+Actor::Actor() : pos(), scale(1.0f), rotation() {
 	parent = nullptr;
 }
 
